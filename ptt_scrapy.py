@@ -16,6 +16,8 @@ import sys
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns 
+import matplotlib.pyplot as plt 
 from bs4 import BeautifulSoup
 from ckiptagger import data_utils, construct_dictionary, WS, POS, NER
 from wordcloud import WordCloud, STOPWORDS, ImageColorGenerator
@@ -25,16 +27,22 @@ from PIL import Image
 from scipy.ndimage import gaussian_gradient_magnitude
 from matplotlib.pyplot import imread
 
-
 #goal:爬取過去6個月的資料
-today=datetime.date.today()
-enddate=today-datetime.timedelta(days=365)
+# today=datetime.date.today()
+# enddate=today-datetime.timedelta(days=730)
+enddate=datetime.date.fromisoformat('2018-12-31')
+
+
+#過濾中文英文數字以外字符
+def filter_str(desstr, restr=''):
+    res = re.compile("[^\\u4e00-\\u9fa5^a-z^A-Z^0-9]")
+    return res.sub(restr, desstr)
 
 
 #爬蟲 
 i=0
 data=[]
-data2=[]
+#data2=[]
 #首頁網址
 hrefs=['/bbs/pet/index.html']
 while True:
@@ -61,7 +69,7 @@ while True:
                 push_list=[]
                 #標題
                 #push_list.append(title)
-                data2.append(title)
+                #data2.append(title)
                 inside_href='https://www.ptt.cc'+rows.find(class_='title').find('a').get('href')
                 inside_source=requests.get(inside_href)
                 inside_content=inside_source.text
@@ -74,146 +82,77 @@ while True:
                     checktime=datetime.datetime.strptime(datetime.datetime.strptime(inside_time,"%a %b %d %H:%M:%S %Y").strftime("%Y/%m/%d"),"%Y/%m/%d").date()
                 except:
                     pass
+                #設定時間條件
                 if i !=0 and checktime < enddate:
                     break
                 
                 print(checktime)
                 #內文
-                inside_text=inside_tree.find('div',id='main-content')
-                all_text=inside_text.text
-                main_text=all_text.split('--')[0]
-                main=main_text.split('\n')
-                mainn=main[1:]
-                mainnn='\n'.join(mainn)
-                data2.append(mainnn)
-                #push_list.append(mainnn)
+                try:
+                    inside_text=inside_tree.find('div',id='main-content')
+                    all_text=inside_text.text
+                    main_text=all_text.split('--')[0]
+                    main=main_text.split('\n')
+                    mainn=main[1:]
+                    mainnn='\n'.join(mainn)
+                except:
+                    pass
+                #data2.append(mainnn)
+                
+                push_list.append(checktime)
+                push_list.append(checktime.strftime("%Y"))
+                push_list.append(checktime.strftime("%m"))
+                push_list.append(filter_str(title))
+                push_list.append(filter_str(mainnn))
+                data.append(push_list)
                    
                 #留言
-                for push in inside_tree.find_all("span", class_="push-content"):
+                #for push in inside_tree.find_all("span", class_="push-content"):
                     #push_list.append(push.text[2:])
-                    data2.append(push.text[2:])
+                    #data2.append(push.text[2:])
                 #data.append(push_list)
             else:
                   pass
+    #設定時間條件
     if i !=0 and checktime < enddate:
         break
     else:
         i=i+1
-
-#文字雲製作
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
-
-word_to_weight = {
-   "一":0,
-   "二":0,
-   "三":0,
-   "四":0,
-   "五":0,
-   "六":0,
-   "七":0,
-   "八":0,
-   "九":0,
-   "零":0,
-   "兩":0
-}
-dictionary = construct_dictionary(word_to_weight)
-
-
-#深度學習
-#斷詞
-ws = WS("./data", disable_cuda=False)
-#詞性標記
-pos = POS("./data", disable_cuda=False)
-#實體辨識
-ner = NER("./data", disable_cuda=False)
-word_sentence_list = ws(
-    data2,
-    sentence_segmentation=True, # To consider delimiters
-    segment_delimiter_set = {",", "。", ":", "?", "!", ";", ".", "（", "）", "", "()", " [",
-        "] ", ":", "", "》"},
-    coerce_dictionary = dictionary,
-)
-pos_sentence_list = pos(word_sentence_list)
-entity_sentence_list = ner(word_sentence_list, pos_sentence_list)
-
-del ws
-del pos
-del ner
-
-def print_word_pos_sentence(word_sentence, pos_sentence):
-    assert len(word_sentence) == len(pos_sentence)
-    for word, pos in zip(word_sentence, pos_sentence):
-        print(f"{word}({pos})", end="\u3000")
-    print()
-    return
-    
-for i, sentence in enumerate(word_sentence_list):
-    print()
-    print(f"'{sentence}'")
-    print_word_pos_sentence(word_sentence_list[i],  pos_sentence_list[i])
-    for entity in sorted(entity_sentence_list[i]):
-        print(entity)
-
-#統計字詞數量
-count_list = []
-for e in entity_sentence_list:
-    for i in e:
-        count_list.append(i[3])        
-df = pd.DataFrame(count_list, columns=["entity"])
-text = df.entity.value_counts()
-text.head(30)        
-
-
-text2 = " ".join(review for review in count_list)
-font_path = '/Users/admin/Downloads/NotoSansCJK-Regular.ttc'
-
-
-
-#color_mask = imread('dog.jpg')
-#cloud = WordCloud(font_path=font_path,
-#background_color="black",
-#mask=color_mask,
-#max_words=2000,
-#max_font_size=80,
-#random_state=42,
-#relative_scaling=0)
-#word_cloud = cloud.generate(text2)
-#plt.axis('off')
-#plt.imshow(word_cloud)
-#plt.show()
-
-
-#文字雲圖片引入與調整
-mask_color = np.array(Image.open('parrot-by-jose-mari-gimenez2.jpg'))
-mask_color = mask_color[::3, ::3]
-mask_image = mask_color.copy()
-mask_image[mask_image.sum(axis=2) == 0] = 255
-edges = np.mean([gaussian_gradient_magnitude(mask_color[:, :, i]/255., 2) for i in range(3)], axis=0)
-mask_image[edges > .08] = 255
-#繪製文字雲
-wordcloud = WordCloud(width=1200, height=600,max_font_size=100, max_words=2000, random_state=42,mask=mask_image,relative_scaling=0,font_path=font_path).generate(text2)
-image_colors = ImageColorGenerator(mask_color)
-wordcloud.recolor(color_func=image_colors)
-plt.figure()
-plt.imshow(wordcloud)
-plt.axis("off")
-plt.show()
-plt.savefig('data.png', dpi = 600)
-
-      
         
-#關聯性分析
-fq_count_lists = []
-for e in entity_sentence_list:
-    fq_count_list = []
-    for i in e:
-        fq_count_list.append(i[3])
-    fq_count_lists.append(fq_count_list)
-te = TransactionEncoder()
-te_ary = te.fit(fq_count_lists).transform(fq_count_lists)
-df = pd.DataFrame(te_ary, columns=te.columns_)  
-fpgrowth(df, min_support=0.01, use_colnames=True)        
+
+#資料儲存
+df=pd.DataFrame(data=data,columns=['date','year','month','title','content'])
+df=df[df['date']>= enddate]
+df.to_csv('ptt_'+(datetime.datetime.now().strftime("%Y%m%d"))+'_scrapy_1.csv',index=False)
+#print(df['month'].value_counts())
+
+#釋放記憶體
+del data
+
+#依年份整理文章數
+statistics=pd.pivot_table(df,index='month',columns='year',values='content',aggfunc=['count'])
+statistics.columns = statistics.columns.droplevel(0) 
+statistics.columns.name = None               
+statistics = statistics.reset_index()        
+
+#敘述統計
+print(statistics.describe())
+print(statistics.sum(axis=0))
+
+#依月分畫圖
+plt.plot(statistics['month'],statistics['2019'],marker='^',label='2019')
+plt.plot(statistics['month'],statistics['2020'],marker='o',label='2020')
+plt.plot(statistics['month'],statistics['2021'],marker='*',label='2021')
+plt.plot(statistics['month'],statistics['2022'],marker='s',label='2022')
+plt.legend() 
+plt.title('content count between 2019 and 2021')
+plt.xlabel('month')
+plt.ylabel('count')
+plt.show()
+plt.savefig('ptt_change.png')
+
+
+
       
         
       
